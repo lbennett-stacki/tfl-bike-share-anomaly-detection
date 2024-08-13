@@ -1,5 +1,7 @@
 use csv::ReaderBuilder;
 use extended_isolation_forest::{Forest, ForestOptions};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
@@ -92,18 +94,31 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut station_map: HashMap<String, Coords> = HashMap::new();
 
-    let deserialized: csv::DeserializeRecordsIter<File, TripRecord> = reader.deserialize();
+    let station_map_reader = File::open(format!("{}/data/station-map.json", repo_path));
 
-    println!("Vectorizing features...");
+    if let Ok(reader) = station_map_reader {
+        println!("Loading station map cache...");
+        station_map = serde_json::from_reader(reader)?;
+    }
+
+    let deserialized: csv::DeserializeRecordsIter<File, TripRecord> = reader.deserialize();
 
     let mut rows = vec![];
 
-    for result in deserialized {
+    let mut shuffled: Vec<_> = deserialized.collect();
+
+    println!("Shuffling rows...");
+
+    shuffled.shuffle(&mut thread_rng());
+
+    println!("Vectorizing features...");
+
+    for result in shuffled {
         let mut row = result?;
 
         let row_read = row.clone();
 
-        let access_token = "MAPBOX_TOKEN";
+        let access_token ="pk.eyJ1IjoibHVrZWVlZWJlbm5ldHQiLCJhIjoiY2x6c2pveWxqMDNpcjJtczV2c3J5NXRhMSJ9.8VIx3hrwNIBBtkS3IhVE6w";
 
         let start_station_coords = *station_map
             .entry(row_read.clone().start_station)
@@ -161,6 +176,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Vectorized {} records.", vectors.len());
 
+    println!("Saving station map cache...");
+    let station_map_writer = File::create(format!("{}/data/station-map.json", repo_path))?;
+    let _ = serde_json::to_writer(station_map_writer, &station_map);
+
     let options = ForestOptions {
         n_trees: 150,
         sample_size: 200,
@@ -168,13 +187,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         extension_level: 1,
     };
 
-    if vectors.len() < 1000 {
+    if vectors.len() < 100000 {
         println!("Not enough data to build the model");
         return Ok(());
     }
 
-    let testing_data = vectors.clone()[0..=100].to_vec();
-    let training_data = vectors.clone()[100..].to_vec();
+    let testing_data = vectors.clone()[0..=100000].to_vec();
+    let training_data = vectors.clone()[100000..].to_vec();
 
     println!(
         "Building isolation forest with {} training records...",

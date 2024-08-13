@@ -8,7 +8,8 @@ import { Coords, Journey } from "@/journey";
 const mapboxStyleUrl =
   "mapbox://styles/lukeeeebennett/clzsii7jl00dx01qobjgs7hi3";
 
-mapboxgl.accessToken = "MAPBOX_TOKEN";
+mapboxgl.accessToken =
+  "pk.eyJ1IjoibHVrZWVlZWJlbm5ldHQiLCJhIjoiY2x6c2pveWxqMDNpcjJtczV2c3J5NXRhMSJ9.8VIx3hrwNIBBtkS3IhVE6w";
 
 const londonCenter: Coords = [-0.1276, 51.5072];
 
@@ -108,12 +109,7 @@ export function Map({ journeys }: { journeys: Journey[] }) {
           return;
         }
 
-        if (
-          journey.startCoords &&
-          journey.endCoords &&
-          journey.score &&
-          journey.score > 0.5
-        ) {
+        if (journey.startCoords && journey.endCoords && journey.score) {
           map.current.addLayer({
             id: `${journey.startStation}-${journey.endStation}-${journey.score}-${journey.durationSeconds}`,
             type: "line",
