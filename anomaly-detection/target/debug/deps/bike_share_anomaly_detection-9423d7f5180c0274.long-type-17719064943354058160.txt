@@ -1,0 +1,1 @@
+linfa::DatasetBase<ndarray::ArrayBase<ndarray::data_repr::OwnedRepr<_>, ndarray::dimension::dim::Dim<[usize; 2]>>, ndarray::ArrayBase<ndarray::data_repr::OwnedRepr<_>, _>>
