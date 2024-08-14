@@ -8,8 +8,7 @@ import { Coords, Journey } from "@/journey";
 const mapboxStyleUrl =
   "mapbox://styles/lukeeeebennett/clzsii7jl00dx01qobjgs7hi3";
 
-mapboxgl.accessToken =
-  "pk.eyJ1IjoibHVrZWVlZWJlbm5ldHQiLCJhIjoiY2x6c2pveWxqMDNpcjJtczV2c3J5NXRhMSJ9.8VIx3hrwNIBBtkS3IhVE6w";
+mapboxgl.accessToken = "";
 
 const londonCenter: Coords = [-0.1276, 51.5072];
 
