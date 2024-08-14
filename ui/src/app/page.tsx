@@ -13,7 +13,7 @@ export default async function Home() {
 
   return (
     <main>
-      <Map journeys={journeys.slice(0, 10000)} />
+      <Map journeys={journeys.slice(0, 10_000)} />
     </main>
   );
 }

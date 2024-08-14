@@ -250,7 +250,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let forest = Forest::from_slice(training_data.as_slice(), &options).unwrap();
 
-    let threshold = 0.74;
+    let threshold = 0.76;
 
     let mut anomalous: Vec<(usize, f64)> = vec![];
 

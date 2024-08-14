@@ -13,7 +13,7 @@ mapboxgl.accessToken =
 
 const londonCenter: Coords = [-0.1276, 51.5072];
 
-const threshold = 0.74;
+const threshold = 0.76;
 
 export function Map({ journeys }: { journeys: Journey[] }) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
