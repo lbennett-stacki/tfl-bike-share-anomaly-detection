@@ -13,6 +13,8 @@ mapboxgl.accessToken =
 
 const londonCenter: Coords = [-0.1276, 51.5072];
 
+const threshold = 0.74;
+
 export function Map({ journeys }: { journeys: Journey[] }) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -36,6 +38,8 @@ export function Map({ journeys }: { journeys: Journey[] }) {
       }
 
       const features = journeys.reduce((output, journey) => {
+        console.log("Adding journey...", journey);
+
         if (journey.startCoords) {
           output.push({
             type: "Feature",
@@ -77,6 +81,8 @@ export function Map({ journeys }: { journeys: Journey[] }) {
         features,
       };
 
+      console.log("Adding source...", geojson);
+
       map.current.addSource("training", {
         type: "geojson",
         data: geojson,
@@ -93,23 +99,47 @@ export function Map({ journeys }: { journeys: Journey[] }) {
       });
 
       map.current.addLayer({
-        id: "training-lines",
-        type: "line",
+        id: "training-points",
+        type: "circle",
         source: "training",
         paint: {
-          "line-color": "red",
-          "line-opacity": 0.25,
-          "line-width": 4,
-          "line-blur": 1,
+          "circle-radius": 5,
+          "circle-color": "blue",
+          "circle-opacity": {
+            type: "exponential",
+            property: "score",
+            default: 0.5,
+            stops: [
+              [0, 0.5],
+              [1, 1],
+            ],
+          },
         },
       });
+
+      // map.current.addLayer({
+      //   id: "training-lines",
+      //   type: "line",
+      //   source: "training",
+      //   paint: {
+      //     "line-color": "red",
+      //     "line-opacity": 0.25,
+      //     "line-width": 2,
+      //     "line-blur": 1,
+      //   },
+      // });
 
       journeys.forEach((journey) => {
         if (!map.current) {
           return;
         }
 
-        if (journey.startCoords && journey.endCoords && journey.score) {
+        if (
+          journey.startCoords &&
+          journey.endCoords &&
+          journey.score &&
+          journey.score > threshold
+        ) {
           map.current.addLayer({
             id: `${journey.startStation}-${journey.endStation}-${journey.score}-${journey.durationSeconds}`,
             type: "line",
@@ -131,38 +161,34 @@ export function Map({ journeys }: { journeys: Journey[] }) {
             paint: {
               "line-color": !journey.score
                 ? "orange"
-                : journey.score > 0.5
+                : journey.score > threshold
                   ? "red"
                   : "green",
-              "line-width": 4,
+              "line-width": journey.score > threshold ? 2 : 1,
             },
           });
 
-          new mapboxgl.Marker({ color: "blue" })
-            .setLngLat(journey.startCoords)
-            .setPopup(
-              new mapboxgl.Popup().setHTML(
-                `
-<p>Start: ${journey.startStation}</p>
-<p>Duration: ${journey.totalDuration}</p>`,
-              ),
-            )
-            .addTo(map.current);
-
-          new mapboxgl.Marker({ color: "purple" })
-            .setLngLat(journey.endCoords)
-            .setPopup(
-              new mapboxgl.Popup().setHTML(
-                `
-<p>End: ${journey.endStation}</p>
-<p>Duration: ${journey.totalDuration}</p>`,
-              ),
-            )
-            .addTo(map.current);
+          if (journey.score > threshold) {
+            new mapboxgl.Marker({
+              color: journey.score > threshold ? "red" : "blue",
+            })
+              .setLngLat(journey.startCoords)
+              .setPopup(
+                new mapboxgl.Popup().setHTML(
+                  `
+           Start Node
+           <p>Start: ${journey.startStation}</p>
+           <p>End: ${journey.endStation}</p>
+           <p>Duration: ${journey.totalDuration}</p>
+           <p>Score: ${journey.score}</p>`,
+                ),
+              )
+              .addTo(map.current);
+          }
         }
       });
     });
-  }, []);
+  }, [journeys]);
 
   return <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />;
 }

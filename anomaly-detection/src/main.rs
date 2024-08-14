@@ -5,12 +5,13 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
-use std::fs::File;
+use std::fs::{read_to_string, File};
+use std::io::prelude::*;
 
 type Coords = (f64, f64);
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct TripRecord {
+struct Journey {
     #[serde(rename(deserialize = "Start station", serialize = "startStation"))]
     start_station: String,
 
@@ -80,6 +81,19 @@ struct MapBoxResponse {
     features: Vec<MapBoxFeature>,
 }
 
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+struct DockingStation {
+    name: String,
+    lat: f64,
+    long: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct DockingStations {
+    #[serde(rename = "$value")]
+    stations: Vec<DockingStation>,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     println!("Loading CSV...");
 
@@ -96,12 +110,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let station_map_reader = File::open(format!("{}/data/station-map.json", repo_path));
 
-    if let Ok(reader) = station_map_reader {
+    if station_map_reader.is_ok() {
         println!("Loading station map cache...");
-        station_map = serde_json::from_reader(reader)?;
+        let raw = read_to_string(format!("{}/data/station-map.json", repo_path)).unwrap();
+        station_map = serde_json::from_str(&raw)?;
     }
 
-    let deserialized: csv::DeserializeRecordsIter<File, TripRecord> = reader.deserialize();
+    let deserialized: csv::DeserializeRecordsIter<File, Journey> = reader.deserialize();
 
     let mut rows = vec![];
 
@@ -113,6 +128,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Vectorizing features...");
 
+    let stations_raw = reqwest::blocking::get(
+        "https://tfl.gov.uk/tfl/syndication/feeds/cycle-hire/livecyclehireupdates.xml",
+    )
+    .expect("Failed to fetch XML")
+    .text()
+    .expect("Failed to parse XML");
+    let stations: DockingStations = serde_xml_rs::from_str(&stations_raw)?;
+
     for result in shuffled {
         let mut row = result?;
 
@@ -123,6 +146,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         let start_station_coords = *station_map
             .entry(row_read.clone().start_station)
             .or_insert_with(|| {
+                let station_from_xml = stations
+                    .stations
+                    .iter()
+                    .find(|s| s.name == row_read.start_station);
+
+                if let Some(station) = station_from_xml {
+                    return (station.long, station.lat);
+                }
+
                 let query = format!("{}, London, UK", row_read.start_station);
                 println!("Geocoding start: {}", query);
                 let result = reqwest::blocking::get(format!(
@@ -134,14 +166,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .expect("Failed to parse geocode");
 
                 let coords = &result.features[0].geometry.coordinates;
-                let coords = (coords[0], coords[1]);
-                row.start_coords = Some(coords);
-
-                coords
+                (coords[0], coords[1])
             });
+
+        row.start_coords = Some(start_station_coords);
+
         let end_station_coords = *station_map
             .entry(row_read.clone().end_station)
             .or_insert_with(|| {
+                let station_from_xml = stations
+                    .stations
+                    .iter()
+                    .find(|s| s.name == row_read.end_station);
+
+                if let Some(station) = station_from_xml {
+                    return (station.long, station.lat);
+                }
+
                 let query = format!("{}, London, UK", row_read.end_station);
                 println!("Geocoding end: {}", query);
                 let result = reqwest::blocking::get(format!(
@@ -153,11 +194,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .expect("Failed to parse geocode");
 
                 let coords = &result.features[0].geometry.coordinates;
-                let coords = (coords[0], coords[1]);
-                row.end_coords = Some(coords);
-
-                coords
+                (coords[0], coords[1])
             });
+
+        row.end_coords = Some(end_station_coords);
 
         let duration_str = row_read.total_duration;
         let seconds = duration_to_seconds(&duration_str)?;
@@ -177,8 +217,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Vectorized {} records.", vectors.len());
 
     println!("Saving station map cache...");
-    let station_map_writer = File::create(format!("{}/data/station-map.json", repo_path))?;
-    let _ = serde_json::to_writer(station_map_writer, &station_map);
+    let mut station_map_writer = File::create(format!("{}/data/station-map.json", repo_path))?;
+    let station_map_raw = serde_json::to_string_pretty(&station_map);
+    match station_map_raw {
+        Ok(raw) => {
+            let _ = station_map_writer.write_all(raw.as_bytes());
+        }
+        Err(e) => {
+            println!("Failed to serialize station map: {:?}", e);
+        }
+    }
 
     let options = ForestOptions {
         n_trees: 150,
@@ -187,13 +235,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         extension_level: 1,
     };
 
-    if vectors.len() < 100000 {
+    if vectors.len() < 68_000 {
         println!("Not enough data to build the model");
         return Ok(());
     }
 
-    let testing_data = vectors.clone()[0..=100000].to_vec();
-    let training_data = vectors.clone()[100000..].to_vec();
+    let testing_data = vectors.clone()[0..72_000].to_vec();
+    let training_data = vectors.clone()[72_000..].to_vec();
 
     println!(
         "Building isolation forest with {} training records...",
@@ -202,7 +250,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let forest = Forest::from_slice(training_data.as_slice(), &options).unwrap();
 
-    let threshold = 0.5;
+    let threshold = 0.74;
 
     let mut anomalous: Vec<(usize, f64)> = vec![];
 
@@ -228,13 +276,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("{:?}", rows[*i]);
     }
 
-    println!("Saving JSON output...");
-
-    let writer = File::create(format!("{}/data/output.json", repo_path))?;
-
     rows.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
-    let _ = serde_json::to_writer(writer, &rows);
+    println!("Saving JSON output...");
+
+    let mut writer = File::create(format!("{}/data/output.json", repo_path))?;
+    let output_raw = serde_json::to_string(&rows);
+    match output_raw {
+        Ok(raw) => {
+            let _ = writer.write_all(raw.as_bytes());
+        }
+        Err(e) => {
+            println!("Failed to serialize output: {:?}", e);
+        }
+    }
 
     Ok(())
 }
