@@ -2,7 +2,7 @@
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Coords, Journey } from "@/journey";
 
 const mapboxStyleUrl =
@@ -19,6 +19,61 @@ export function Map({ journeys }: { journeys: Journey[] }) {
   const map = useRef<mapboxgl.Map | null>(null);
 
   console.log(`Rendering ${journeys.length} journeys...`);
+
+  const explain = useCallback(
+    (journey: Journey) => {
+      const journeysStartingHereCount = journeys.filter(
+        (j) => j.startStation === journey.startStation,
+      ).length;
+
+      const journeysEndingHereCount = journeys.filter(
+        (j) => j.endStation === journey.endStation,
+      ).length;
+
+      const journeysStartingAndEndingHereCount = journeys.filter(
+        (j) =>
+          j.startStation === journey.startStation &&
+          j.endStation === journey.endStation,
+      ).length;
+
+      const averageDurationOfJourneysStartingHere =
+        journeys
+          .filter((j) => j.startStation === journey.startStation)
+          .reduce((total, j) => total + j.durationSeconds, 0) /
+        journeysStartingHereCount;
+
+      const averageDurationOfJourneysEndingHere =
+        journeys
+          .filter((j) => j.endStation === journey.endStation)
+          .reduce((total, j) => total + j.durationSeconds, 0) /
+        journeysEndingHereCount;
+
+      const averageDurationOfJourneysStartingAndEndingHere =
+        journeys
+          .filter(
+            (j) =>
+              j.startStation === journey.startStation &&
+              j.endStation === journey.endStation,
+          )
+          .reduce((total, j) => total + j.durationSeconds, 0) /
+        journeysStartingAndEndingHereCount;
+
+      return `
+        <ol>
+          <li>
+            * This journey is 1 of ${journeysStartingAndEndingHereCount} journeys from ${journey.startStation} to ${journey.endStation} with an average duration of ${averageDurationOfJourneysStartingAndEndingHere / 60 / 60} hours.
+          </li>
+          <li>
+            * There are ${journeysStartingHereCount} journeys starting at ${journey.startStation} with an average duration of ${averageDurationOfJourneysStartingHere / 60 / 60} hours.
+          </li>
+          <li>
+            * There are ${journeysEndingHereCount} journeys ending at ${journey.endStation} with an average duration of ${averageDurationOfJourneysEndingHere / 60 / 60} hours.
+          </li>
+        </ol>
+      `.trim();
+    },
+    [journeys],
+  );
 
   useEffect(() => {
     if (map.current) return;
@@ -175,11 +230,14 @@ export function Map({ journeys }: { journeys: Journey[] }) {
               .setPopup(
                 new mapboxgl.Popup().setHTML(
                   `
-           Start Node
-           <p>Start: ${journey.startStation}</p>
-           <p>End: ${journey.endStation}</p>
-           <p>Duration: ${journey.totalDuration}</p>
-           <p>Score: ${journey.score}</p>`,
+Start Node
+<p>Start: ${journey.startStation}</p>
+<p>End: ${journey.endStation}</p>
+<p>Duration: ${journey.totalDuration}</p>
+<p>Score: ${journey.score}</p>
+<p>Explanation:</p>
+${explain(journey)}
+                `.trim(),
                 ),
               )
               .addTo(map.current);
@@ -187,7 +245,7 @@ export function Map({ journeys }: { journeys: Journey[] }) {
         }
       });
     });
-  }, [journeys]);
+  }, [journeys, explain]);
 
   return <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />;
 }
