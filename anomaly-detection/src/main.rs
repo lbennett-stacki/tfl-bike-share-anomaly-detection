@@ -141,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let row_read = row.clone();
 
-        let access_token ="pk.eyJ1IjoibHVrZWVlZWJlbm5ldHQiLCJhIjoiY2x6c2pveWxqMDNpcjJtczV2c3J5NXRhMSJ9.8VIx3hrwNIBBtkS3IhVE6w";
+        let access_token = "";
 
         let start_station_coords = *station_map
             .entry(row_read.clone().start_station)
